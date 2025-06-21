@@ -6,11 +6,22 @@
 #pragma comment(lib, "ws2_32.lib")
 
 #define PORT1 12345
-#define PORT2 23456
+#define PORT2 65433
 #define BUFFER_SIZE 4096
 
 SOCKET client1 = INVALID_SOCKET;
 SOCKET client2 = INVALID_SOCKET;
+
+// 安全打印函数：非可打印字符替换为点
+void SafePrint(const char* buffer, int length) {
+    for (int i = 0; i < length; i++) {
+        if (buffer[i] >= 32 && buffer[i] <= 126) {
+            putchar(buffer[i]);
+        } else {
+            putchar('.');
+        }
+    }
+}
 
 DWORD WINAPI ForwardThread(LPVOID data) {
     SOCKET src = ((SOCKET*)data)[0];
@@ -18,15 +29,30 @@ DWORD WINAPI ForwardThread(LPVOID data) {
     char buffer[BUFFER_SIZE];
     int bytesRead;
 
+    // 确定端口信息
+    int srcPort = (src == client1) ? PORT1 : PORT2;
+    int dstPort = (dst == client1) ? PORT1 : PORT2;
+
     while (1) {
+        // 接收数据
         bytesRead = recv(src, buffer, BUFFER_SIZE, 0);
-        if (bytesRead <= 0) break;  // 连接断开或错误
-        
+        if (bytesRead <= 0) break;
+
+        // 打印接收信息
+        printf("[Port %d SEND]: ", srcPort);
+        SafePrint(buffer, bytesRead);
+        printf(" (%d bytes)\n", bytesRead);
+
+        // 发送数据
         int bytesSent = send(dst, buffer, bytesRead, 0);
         if (bytesSent <= 0) break;
+
+        // 打印发送信息
+        printf("[Port %d RECV]: ", dstPort);
+        SafePrint(buffer, bytesSent);
+        printf(" (%d bytes)\n", bytesSent);
     }
 
-    // 关闭连接
     closesocket(src);
     closesocket(dst);
     return 0;
@@ -64,17 +90,14 @@ int main() {
     int addrSize = sizeof(addr);
     HANDLE threads[2];
 
-    // 初始化Winsock
     if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) {
         printf("WSAStartup failed: %d\n", WSAGetLastError());
         return 1;
     }
 
-    // 设置两个服务器
     SetupServer(&server1, PORT1);
     SetupServer(&server2, PORT2);
 
-    // 等待两个客户端连接
     printf("Waiting for client on port %d...\n", PORT1);
     client1 = accept(server1, (struct sockaddr*)&addr, &addrSize);
     if (client1 == INVALID_SOCKET) {
@@ -91,21 +114,17 @@ int main() {
     }
     printf("Client connected to port %d\n", PORT2);
 
-    // 关闭监听套接字
     closesocket(server1);
     closesocket(server2);
 
-    // 创建转发线程
     SOCKET thread1Data[2] = {client1, client2};
     SOCKET thread2Data[2] = {client2, client1};
 
     threads[0] = CreateThread(NULL, 0, ForwardThread, thread1Data, 0, NULL);
     threads[1] = CreateThread(NULL, 0, ForwardThread, thread2Data, 0, NULL);
 
-    // 等待线程结束
     WaitForMultipleObjects(2, threads, TRUE, INFINITE);
     
-    // 清理
     CloseHandle(threads[0]);
     CloseHandle(threads[1]);
     WSACleanup();
