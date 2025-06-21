@@ -10,6 +10,8 @@
 #include <factory.h>
 #include <QMessageBox>
 
+#include "tcpclient.h"
+
 QT_BEGIN_NAMESPACE
 namespace Ui { class MainWindow; }
 QT_END_NAMESPACE
@@ -22,14 +24,24 @@ public:
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 
+    bool s_isConnect = false;   //连接状态
+
     int precedence(const QString& s) const;//获取优先级
     string readSig(string::iterator& it);
     bool isSig(string::iterator& c) const {
         return *c >= 'a' && *c <= 'z';
     }
+private slots:
+    // 添加这三个槽函数声明
+    void onClientConnected();
+    void onClientDisconnected();
+    void onMessageReceived(const QString &msg);
 
 private:
     Ui::MainWindow *ui;
+
+
+    TcpClient *client; // 创建TCP客户端
 
     Stack<double> m_num; // 数字栈
     Stack<unique_ptr<Operator>> m_opr; // 运算符栈
@@ -37,6 +49,8 @@ private:
     bool isNum(string::iterator &c) { // 判断字符是否为数字
         return (*c >= '0'&&*c <= '9' ) || *c == '.' || *c=='p' || *c=='i' || *c=='e';
     }
+
+    //计算结果
     double doIt(QString &question);
 
     QString qstr;

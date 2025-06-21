@@ -1,6 +1,12 @@
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
 
+
+
+
+// 创建TCP客户端
+static TcpClient s_client("127.0.0.1", 12345);
+
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow)
@@ -70,6 +76,16 @@ MainWindow::MainWindow(QWidget *parent)
 
     //按一下clc键执行栈和变量初始化
     clickedclc();
+
+    // 连接客户端的信号到主窗口的槽函数
+    this->client = &s_client;
+    connect(client, &TcpClient::connected, this, &MainWindow::onClientConnected);
+    connect(client, &TcpClient::disconnected, this, &MainWindow::onClientDisconnected);
+    connect(client, &TcpClient::messageReceived, this, &MainWindow::onMessageReceived);
+
+    // 启动连接
+    client->connectToServer();
+
 }
 
 MainWindow::~MainWindow()
@@ -77,8 +93,25 @@ MainWindow::~MainWindow()
     delete ui;
 }
 
+/***************** 通信槽函数 ******************/
+void MainWindow::onClientConnected()
+{
+    qDebug() << "MAIN: Connected to server!";
+    s_isConnect = true;
+}
+void MainWindow::onClientDisconnected()
+{
+    qDebug() << "MAIN: Disconnected from server";
+    s_isConnect = false;
+}
+void MainWindow::onMessageReceived(const QString &msg)
+{
+    qDebug() << "MAIN: Received message -" << msg;
 
-
+    showstr += (msg);
+    ui->showText->setText(showstr);
+    ui->historyText->append(showstr);
+}
 
 
 /***************** 按键槽函数 ******************/
@@ -792,7 +825,15 @@ void MainWindow::clickedEqu()
     finishFlag=1;
     lastQstrLength = 0;
     lastShowstrLength = 0;
+
+    //计算结果
     //doIt(qstr);
+    if (s_isConnect) {
+        client->sendMessage(qstr);
+    } else {
+        qDebug() << "MAIN: Skipping send - not connected";
+    }
+
 }
 void MainWindow::clickedLeft()
 {

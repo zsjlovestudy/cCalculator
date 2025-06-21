@@ -1,6 +1,8 @@
 #include "mainwindow.h"
 #include <QBitmap>
 #include <QApplication>
+
+
 using namespace std;
 
 map<string, function<unique_ptr<Operator>()>> Factory::ms_operator;
