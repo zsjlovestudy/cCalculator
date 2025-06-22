@@ -11,6 +11,7 @@
 #define TARGET_SERVER_PORT 65433     // 外部服务器端口
 #define BUFFER_SIZE 4096
 #define END_MARKER "<END>"
+#define END_MARKER_LEN 5  // "<END>"的长度
 
 SOCKET serverSocket = INVALID_SOCKET;
 SOCKET clientSocket = INVALID_SOCKET;
@@ -37,17 +38,16 @@ DWORD WINAPI ServerToClientThread(LPVOID lpParam) {
         SafePrint(buffer, bytesRead);
         printf(" (%d bytes)\n", bytesRead);
         
-        // 修改点1：删除末尾的等号(=)
+        // 删除末尾的等号(=)
         if (bytesRead > 0 && buffer[bytesRead - 1] == '=') {
             bytesRead--; // 移除末尾的等号
             printf("[PROCESS]: Removed trailing '=' character\n");
         }
         
-        // 修改点2：添加结束标记（在删除等号后）
-        size_t markerLen = strlen(END_MARKER);
-        if (bytesRead + markerLen < BUFFER_SIZE) {
-            memcpy(buffer + bytesRead, END_MARKER, markerLen);
-            bytesRead += (int)markerLen;
+        // 添加结束标记
+        if (bytesRead + END_MARKER_LEN < BUFFER_SIZE) {
+            memcpy(buffer + bytesRead, END_MARKER, END_MARKER_LEN);
+            bytesRead += END_MARKER_LEN;
             printf("[PROCESS]: Added <%s> marker\n", END_MARKER);
         } else {
             printf("[WARNING]: Buffer full, cannot add marker\n");
@@ -77,6 +77,13 @@ DWORD WINAPI ClientToServerThread(LPVOID lpParam) {
         printf("[port %d SEND]: ", TARGET_SERVER_PORT);
         SafePrint(buffer, bytesRead);
         printf(" (%d bytes)\n", bytesRead);
+        
+        // 修改点：删除末尾的<END>标记（如果存在）
+        if (bytesRead >= END_MARKER_LEN && 
+            memcmp(buffer + bytesRead - END_MARKER_LEN, END_MARKER, END_MARKER_LEN) == 0) {
+            bytesRead -= END_MARKER_LEN;  // 移除末尾的<END>标记
+            printf("[PROCESS]: Removed <%s> marker\n", END_MARKER);
+        }
         
         int bytesSent = send(serverSocket, buffer, bytesRead, 0);
         if (bytesSent <= 0) break;
