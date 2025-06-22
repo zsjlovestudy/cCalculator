@@ -30,10 +30,10 @@ class ExpressionParser:
         '*': Operator('*', 2, 2, lambda a, b: a * b),
         '/': Operator('/', 2, 2, lambda a, b: a / b),
         '^': Operator('^', 3, 2, lambda a, b: a ** b),
-        '%': Operator('%', 2, 2, lambda a, b: a % b),  # 新增取模运算符
+        '%': Operator('%', 2, 2, lambda a, b: a % b),
         '!': Operator('!', 4, 1, lambda a: math.factorial(int(a))
         if a >= 0 and a.is_integer()
-        else float('nan')),  # 修复阶乘
+        else float('nan')),
     }
 
     FUNCTIONS = {
@@ -46,6 +46,7 @@ class ExpressionParser:
         'sqrt': (1, math.sqrt),
         'log': (1, math.log10),
         'ln': (1, math.log),
+        'mexp': (1, math.exp),  # 新增mexp函数
     }
 
     CONSTANTS = {
@@ -87,15 +88,34 @@ class ExpressionParser:
                     j += 1
                 word = formula[i:j]
 
-                if word in self.FUNCTIONS:
-                    tokens.append((TokenType.FUNCTION, word))
-                elif word in self.CONSTANTS:
-                    tokens.append((TokenType.CONSTANT, word))
-                else:
-                    raise ValueError(f"未知标识符: {word}")
 
-                i = j
-                continue
+                if word == 'mexp' and j < n and (formula[j].isdigit() or formula[j] == '.'):
+                    # 读取数字部分
+                    k = j
+                    while k < n and (formula[k].isdigit() or formula[k] in '.eE'):
+                        k += 1
+                    num_str = formula[j:k]
+
+                    # 添加mexp函数标记
+                    tokens.append((TokenType.FUNCTION, 'mexp'))
+                    # 添加左括号
+                    tokens.append((TokenType.LEFT_PAREN, '('))
+                    # 添加数字
+                    tokens.append((TokenType.NUMBER, num_str))
+                    # 添加右括号
+                    tokens.append((TokenType.RIGHT_PAREN, ')'))
+                    i = k
+                    continue
+                else:
+                    # 正常处理函数和常量
+                    if word in self.FUNCTIONS:
+                        tokens.append((TokenType.FUNCTION, word))
+                    elif word in self.CONSTANTS:
+                        tokens.append((TokenType.CONSTANT, word))
+                    else:
+                        raise ValueError(f"未知标识符: {word}")
+                    i = j
+                    continue
 
             # 处理运算符（包含%）
             if formula[i] in self.OPERATORS or formula[i] == '%':
@@ -118,10 +138,11 @@ class ExpressionParser:
 
         return tokens
 
+
     def parse(self, formula):
         self.reset()
         tokens = self.tokenize(formula)
-        last_token_type = None  # 跟踪上一个token类型
+        last_token_type = None
 
         for token_type, value in tokens:
             if token_type == TokenType.NUMBER:
@@ -148,20 +169,17 @@ class ExpressionParser:
                 last_token_type = TokenType.RIGHT_PAREN
 
             elif token_type == TokenType.OPERATOR:
-                # 一元负号特殊处理
                 if value == '-' and last_token_type in [None, TokenType.OPERATOR, TokenType.LEFT_PAREN]:
-                    op = Operator('u-', 4, 1, lambda a: -a)  # 一元负号
+                    op = Operator('u-', 4, 1, lambda a: -a)
                 else:
                     op = self.OPERATORS[value]
 
-                # 处理运算符优先级
                 while self.op_stack and op.precedence <= self.op_stack[-1].precedence:
                     self.calculate()
 
                 self.op_stack.append(op)
                 last_token_type = TokenType.OPERATOR
 
-        # 处理剩余运算符
         while self.op_stack[-1].symbol != '#':
             self.calculate()
 
@@ -179,17 +197,16 @@ class ExpressionParser:
                 raise ValueError("操作数不足")
             operands.append(self.num_stack.pop())
 
-        # 正三角函数：角度转弧度
         if op.symbol in ['sin', 'cos', 'tan']:
             operands = [math.radians(operands[0])]
 
         result = op.func(*reversed(operands))
 
-        # 反三角函数：弧度转角度
         if op.symbol in ['asin', 'acos', 'atan']:
-            result = math.degrees(result)  # 新增转换逻辑
+            result = math.degrees(result)
 
         self.num_stack.append(result)
+
 
 
 def start_server():
@@ -216,29 +233,22 @@ def safe_calculate(formula):
         elif math.isinf(result):
             return "数学错误: 结果无穷大"
 
-        # ===== 新增结果格式化逻辑 =====
-        # 1. 四舍五入到7位小数
         rounded = round(result, 7)
 
-        # 2. 处理接近零的值
         if abs(rounded) < 1e-15:
             return "0"
 
-        # 3. 格式化为15位小数避免科学计数法
         s = format(rounded, '.15f')
 
-        # 4. 去除末尾多余的零和小数点
         if '.' in s:
             s = s.rstrip('0').rstrip('.')
-            if s == '' or s == '-':  # 处理空字符串或负号
+            if s == '' or s == '-':
                 s = '0'
 
-        # 5. 处理负零情况
         if s == '-0':
             s = '0'
 
         return s
-        # ===== 结束新增逻辑 =====
 
     except Exception as e:
         return f"计算错误: {str(e)}"
@@ -246,15 +256,14 @@ def safe_calculate(formula):
 
 def main():
     server_socket = start_server()
-    parser = ExpressionParser()  # 创建解析器实例
+    parser = ExpressionParser()
 
     while True:
         client_socket, addr = server_socket.accept()
-        client_socket.settimeout(100.0)  # 10秒超时
+        client_socket.settimeout(100.0)
         print(f"已连接: {addr}")
 
         try:
-            # 高效接收数据（带超时和结束标记检测）
             data = b''
             end_marker = b'<END>'
             start_time = time.time()
@@ -265,17 +274,13 @@ def main():
                     if not chunk:
                         break
                     data += chunk
+                    print(f"接收原始数据: {chunk.decode()!r}")
 
-                    # 打印接收到的原始数据内容[2,6](@ref)
-                    print(f"接收原始数据: {chunk.decode()!r}")  # 新增行：打印原始数据
-
-                    # 检查结束标记或超时
                     if data.endswith(end_marker) or time.time() - start_time > 100:
                         break
                 except socket.timeout:
                     break
 
-            # 提取公式（确保处理不完整的传输）
             if data.endswith(end_marker):
                 formula = data[:-len(end_marker)].decode().strip()
             else:
@@ -286,24 +291,20 @@ def main():
                 result = safe_calculate(formula)
                 print(f"计算结果: {result}")
 
-                # 发送响应
                 response = result.encode() + end_marker
                 client_socket.sendall(response)
-
-                # 打印发送的响应内容[2,6](@ref)
-                print(f"发送响应: {response.decode()!r}")  # 新增行：打印响应数据
+                print(f"发送响应: {response.decode()!r}")
 
         except Exception as e:
             error_msg = f"服务器错误: {str(e)}".encode() + end_marker
             print(f"处理错误: {str(e)}")
             client_socket.sendall(error_msg)
-
-            # 打印错误信息内容[2,6](@ref)
-            print(f"发送错误信息: {error_msg.decode()!r}")  # 新增行：打印错误信息
+            print(f"发送错误信息: {error_msg.decode()!r}")
 
         finally:
             client_socket.close()
             print(f"关闭连接: {addr}")
+
 
 if __name__ == "__main__":
     main()
