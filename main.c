@@ -6,16 +6,14 @@
 
 #pragma comment(lib, "ws2_32.lib")
 
-#define SERVER_PORT 12345
-#define CLIENT_PORT 65433
-#define TARGET_SERVER_IP "127.0.0.1"
-#define TARGET_SERVER_PORT 8888
+#define SERVER_PORT 12345      // 修改：本地服务器端口（供外部客户端连接）
+#define TARGET_SERVER_IP "127.0.0.1"  // 外部服务器IP（根据实际情况修改）
+#define TARGET_SERVER_PORT 65433     // 修改：外部服务器端口（原65433改为连接目标端口）
 #define BUFFER_SIZE 4096
 #define END_MARKER "<END>"
 
 SOCKET serverSocket = INVALID_SOCKET;
 SOCKET clientSocket = INVALID_SOCKET;
-SOCKET targetSocket = INVALID_SOCKET;
 
 void SafePrint(const char* buffer, int length) {
     for (int i = 0; i < length; i++) {
@@ -51,7 +49,7 @@ DWORD WINAPI ServerToClientThread(LPVOID lpParam) {
         int bytesSent = send(clientSocket, buffer, bytesRead, 0);
         if (bytesSent <= 0) break;
         
-        printf("[port %d RECV]: ", CLIENT_PORT);
+        printf("[port %d RECV]: ", TARGET_SERVER_PORT);  // 修改：显示目标服务器端口
         SafePrint(buffer, bytesSent);
         printf(" (%d bytes)\n", bytesSent);
     }
@@ -69,7 +67,7 @@ DWORD WINAPI ClientToServerThread(LPVOID lpParam) {
         bytesRead = recv(clientSocket, buffer, BUFFER_SIZE, 0);
         if (bytesRead <= 0) break;
         
-        printf("[port %d SEND]: ", CLIENT_PORT);
+        printf("[port %d SEND]: ", TARGET_SERVER_PORT);  // 修改：显示目标服务器端口
         SafePrint(buffer, bytesRead);
         printf(" (%d bytes)\n", bytesRead);
         
@@ -95,7 +93,7 @@ void SetupServer() {
     
     struct sockaddr_in serverAddr;
     serverAddr.sin_family = AF_INET;
-    serverAddr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    serverAddr.sin_addr.s_addr = htonl(INADDR_ANY);  // 修改：监听所有接口（允许外部连接）
     serverAddr.sin_port = htons(SERVER_PORT);
     
     if (bind(serverSocket, (struct sockaddr*)&serverAddr, sizeof(serverAddr)) == SOCKET_ERROR) {
@@ -108,7 +106,7 @@ void SetupServer() {
         exit(1);
     }
     
-    printf("Server listening on port %d\n", SERVER_PORT);
+    printf("Server listening on port %d (external)\n", SERVER_PORT);  // 修改：提示外部连接
 }
 
 void ConnectToTargetServer() {
@@ -119,34 +117,21 @@ void ConnectToTargetServer() {
         exit(1);
     }
     
-    // 绑定到指定客户端端口
-    struct sockaddr_in clientAddr;
-    clientAddr.sin_family = AF_INET;
-    clientAddr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-    clientAddr.sin_port = htons(CLIENT_PORT);
-    
-    if (bind(clientSocket, (struct sockaddr*)&clientAddr, sizeof(clientAddr)) == SOCKET_ERROR) {
-        printf("client bind() failed: %d\n", WSAGetLastError());
-        closesocket(clientSocket);
-        exit(1);
-    }
-    
     // 设置目标服务器地址
     struct sockaddr_in targetAddr;
     targetAddr.sin_family = AF_INET;
     targetAddr.sin_addr.s_addr = inet_addr(TARGET_SERVER_IP);
-    targetAddr.sin_port = htons(TARGET_SERVER_PORT);
+    targetAddr.sin_port = htons(TARGET_SERVER_PORT);  // 修改：连接到外部服务器65433端口
     
     // 连接到目标服务器
-    printf("Client connecting to %s:%d...\n", TARGET_SERVER_IP, TARGET_SERVER_PORT);
+    printf("Connecting to external server %s:%d...\n", TARGET_SERVER_IP, TARGET_SERVER_PORT);
     if (connect(clientSocket, (struct sockaddr*)&targetAddr, sizeof(targetAddr)) == SOCKET_ERROR) {
         printf("connect() failed: %d\n", WSAGetLastError());
         closesocket(clientSocket);
         exit(1);
     }
     
-    printf("Client connected from port %d to %s:%d\n", 
-           CLIENT_PORT, TARGET_SERVER_IP, TARGET_SERVER_PORT);
+    printf("Connected to external server %s:%d\n", TARGET_SERVER_IP, TARGET_SERVER_PORT);
 }
 
 int main() {
@@ -160,10 +145,10 @@ int main() {
         return 1;
     }
     
-    // 设置本地服务器
+    // 设置本地服务器（监听12345端口）
     SetupServer();
     
-    // 连接到目标服务器
+    // 连接到目标服务器（外部65433端口）
     ConnectToTargetServer();
     
     // 接受客户端连接到本地服务器
@@ -173,7 +158,13 @@ int main() {
         printf("accept() failed: %d\n", WSAGetLastError());
         return 1;
     }
-    printf("Client connected to server port %d\n", SERVER_PORT);
+    
+    // 获取客户端IP地址
+    char clientIP[INET_ADDRSTRLEN];
+    inet_ntop(AF_INET, &clientAddr.sin_addr, clientIP, INET_ADDRSTRLEN);
+    printf("External client connected from %s:%d to port %d\n", 
+           clientIP, ntohs(clientAddr.sin_port), SERVER_PORT);
+    
     serverSocket = clientConnection;  // 使用接受的连接
     
     // 创建转发线程
@@ -184,6 +175,8 @@ int main() {
     
     CloseHandle(threads[0]);
     CloseHandle(threads[1]);
+    closesocket(serverSocket);
+    closesocket(clientSocket);
     WSACleanup();
     return 0;
 }
