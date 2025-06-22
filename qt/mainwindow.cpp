@@ -455,7 +455,7 @@ void MainWindow::clickedclcH()
 }
 void MainWindow::clickedrec()
 {
-    qstr += "rec";
+    qstr += "^-1";
     showstr += "^-1";
     lastQstrLength = 3;
     lastShowstrLength = 3;
