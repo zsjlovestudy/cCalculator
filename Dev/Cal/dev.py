@@ -266,6 +266,9 @@ def main():
                         break
                     data += chunk
 
+                    # 打印接收到的原始数据内容[2,6](@ref)
+                    print(f"接收原始数据: {chunk.decode()!r}")  # 新增行：打印原始数据
+
                     # 检查结束标记或超时
                     if data.endswith(end_marker) or time.time() - start_time > 100:
                         break
@@ -284,16 +287,23 @@ def main():
                 print(f"计算结果: {result}")
 
                 # 发送响应
-                client_socket.sendall(result.encode() + end_marker)
+                response = result.encode() + end_marker
+                client_socket.sendall(response)
+
+                # 打印发送的响应内容[2,6](@ref)
+                print(f"发送响应: {response.decode()!r}")  # 新增行：打印响应数据
 
         except Exception as e:
+            error_msg = f"服务器错误: {str(e)}".encode() + end_marker
             print(f"处理错误: {str(e)}")
-            client_socket.sendall(f"服务器错误: {str(e)}".encode() + end_marker)
+            client_socket.sendall(error_msg)
+
+            # 打印错误信息内容[2,6](@ref)
+            print(f"发送错误信息: {error_msg.decode()!r}")  # 新增行：打印错误信息
 
         finally:
             client_socket.close()
             print(f"关闭连接: {addr}")
-
 
 if __name__ == "__main__":
     main()
