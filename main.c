@@ -6,9 +6,9 @@
 
 #pragma comment(lib, "ws2_32.lib")
 
-#define SERVER_PORT 12345      // 修改：本地服务器端口（供外部客户端连接）
-#define TARGET_SERVER_IP "127.0.0.1"  // 外部服务器IP（根据实际情况修改）
-#define TARGET_SERVER_PORT 65433     // 修改：外部服务器端口（原65433改为连接目标端口）
+#define SERVER_PORT 12345      // 本地服务器端口（供外部客户端连接）
+#define TARGET_SERVER_IP "127.0.0.1"  // 外部服务器IP
+#define TARGET_SERVER_PORT 65433     // 外部服务器端口
 #define BUFFER_SIZE 4096
 #define END_MARKER "<END>"
 
@@ -37,10 +37,17 @@ DWORD WINAPI ServerToClientThread(LPVOID lpParam) {
         SafePrint(buffer, bytesRead);
         printf(" (%d bytes)\n", bytesRead);
         
-        // 添加结束标记
-        if (bytesRead + strlen(END_MARKER) < BUFFER_SIZE) {
-            memcpy(buffer + bytesRead, END_MARKER, strlen(END_MARKER));
-            bytesRead += strlen(END_MARKER);
+        // 修改点1：删除末尾的等号(=)
+        if (bytesRead > 0 && buffer[bytesRead - 1] == '=') {
+            bytesRead--; // 移除末尾的等号
+            printf("[PROCESS]: Removed trailing '=' character\n");
+        }
+        
+        // 修改点2：添加结束标记（在删除等号后）
+        size_t markerLen = strlen(END_MARKER);
+        if (bytesRead + markerLen < BUFFER_SIZE) {
+            memcpy(buffer + bytesRead, END_MARKER, markerLen);
+            bytesRead += (int)markerLen;
             printf("[PROCESS]: Added <%s> marker\n", END_MARKER);
         } else {
             printf("[WARNING]: Buffer full, cannot add marker\n");
@@ -49,7 +56,7 @@ DWORD WINAPI ServerToClientThread(LPVOID lpParam) {
         int bytesSent = send(clientSocket, buffer, bytesRead, 0);
         if (bytesSent <= 0) break;
         
-        printf("[port %d RECV]: ", TARGET_SERVER_PORT);  // 修改：显示目标服务器端口
+        printf("[port %d RECV]: ", TARGET_SERVER_PORT);
         SafePrint(buffer, bytesSent);
         printf(" (%d bytes)\n", bytesSent);
     }
@@ -67,7 +74,7 @@ DWORD WINAPI ClientToServerThread(LPVOID lpParam) {
         bytesRead = recv(clientSocket, buffer, BUFFER_SIZE, 0);
         if (bytesRead <= 0) break;
         
-        printf("[port %d SEND]: ", TARGET_SERVER_PORT);  // 修改：显示目标服务器端口
+        printf("[port %d SEND]: ", TARGET_SERVER_PORT);
         SafePrint(buffer, bytesRead);
         printf(" (%d bytes)\n", bytesRead);
         
@@ -93,7 +100,7 @@ void SetupServer() {
     
     struct sockaddr_in serverAddr;
     serverAddr.sin_family = AF_INET;
-    serverAddr.sin_addr.s_addr = htonl(INADDR_ANY);  // 修改：监听所有接口（允许外部连接）
+    serverAddr.sin_addr.s_addr = htonl(INADDR_ANY);
     serverAddr.sin_port = htons(SERVER_PORT);
     
     if (bind(serverSocket, (struct sockaddr*)&serverAddr, sizeof(serverAddr)) == SOCKET_ERROR) {
@@ -106,7 +113,7 @@ void SetupServer() {
         exit(1);
     }
     
-    printf("Server listening on port %d (external)\n", SERVER_PORT);  // 修改：提示外部连接
+    printf("Server listening on port %d (external)\n", SERVER_PORT);
 }
 
 void ConnectToTargetServer() {
@@ -121,7 +128,7 @@ void ConnectToTargetServer() {
     struct sockaddr_in targetAddr;
     targetAddr.sin_family = AF_INET;
     targetAddr.sin_addr.s_addr = inet_addr(TARGET_SERVER_IP);
-    targetAddr.sin_port = htons(TARGET_SERVER_PORT);  // 修改：连接到外部服务器65433端口
+    targetAddr.sin_port = htons(TARGET_SERVER_PORT);
     
     // 连接到目标服务器
     printf("Connecting to external server %s:%d...\n", TARGET_SERVER_IP, TARGET_SERVER_PORT);
