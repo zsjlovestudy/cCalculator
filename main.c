@@ -2,12 +2,14 @@
 #include <ws2tcpip.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h> // 添加字符串操作头文件
 
 #pragma comment(lib, "ws2_32.lib")
 
 #define PORT1 12345
 #define PORT2 65433
 #define BUFFER_SIZE 4096
+#define END_MARKER "<END>" // 定义结束标记
 
 SOCKET client1 = INVALID_SOCKET;
 SOCKET client2 = INVALID_SOCKET;
@@ -38,16 +40,31 @@ DWORD WINAPI ForwardThread(LPVOID data) {
         bytesRead = recv(src, buffer, BUFFER_SIZE, 0);
         if (bytesRead <= 0) break;
 
-        // 打印接收信息
+        // 打印接收信息 - 恢复原始标识
         printf("[Port %d SEND]: ", srcPort);
         SafePrint(buffer, bytesRead);
         printf(" (%d bytes)\n", bytesRead);
+
+        // 特殊处理：从PORT1接收的数据添加<END>标记
+        if (srcPort == PORT1) {
+            // 检查缓冲区是否有足够空间添加结束标记
+            if (bytesRead + strlen(END_MARKER) < BUFFER_SIZE) {
+                // 添加结束标记
+                memcpy(buffer + bytesRead, END_MARKER, strlen(END_MARKER));
+                bytesRead += strlen(END_MARKER);
+                
+                // 打印添加结束标记后的数据
+                printf("[Data PROCESS]: Added <%s> marker\n", END_MARKER);
+            } else {
+                printf("[WARNING]: Buffer full, cannot add <%s> marker\n", END_MARKER);
+            }
+        }
 
         // 发送数据
         int bytesSent = send(dst, buffer, bytesRead, 0);
         if (bytesSent <= 0) break;
 
-        // 打印发送信息
+        // 打印发送信息 - 恢复原始标识
         printf("[Port %d RECV]: ", dstPort);
         SafePrint(buffer, bytesSent);
         printf(" (%d bytes)\n", bytesSent);
@@ -117,9 +134,10 @@ int main() {
     closesocket(server1);
     closesocket(server2);
 
-    SOCKET thread1Data[2] = {client1, client2};
-    SOCKET thread2Data[2] = {client2, client1};
+    SOCKET thread1Data[2] = {client1, client2};  // PORT1 -> PORT2（添加<END>）
+    SOCKET thread2Data[2] = {client2, client1};  // PORT2 -> PORT1（直接转发）
 
+    // 创建转发线程
     threads[0] = CreateThread(NULL, 0, ForwardThread, thread1Data, 0, NULL);
     threads[1] = CreateThread(NULL, 0, ForwardThread, thread2Data, 0, NULL);
 
